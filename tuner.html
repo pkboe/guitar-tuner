@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>Tuneline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one centered column. Gauge and readout on top, the six strings beneath, controls last. */
+:root {
+  --bg: #eaeff1;
+  --panel: #f8fafa;
+  --fg: #12181b;
+  --muted: #566268;
+  --line: #ccd5d9;
+  --ink: #12181b;
+  --on-ink: #f3f7f8;
+  --ok: #17855a;
+  --ok-soft: rgba(23, 133, 90, 0.15);
+  --warn: #c2700a;
+  --idle: #8a979d;
+  --font-display: 'Big Shoulders Display', 'Arial Narrow', Impact, sans-serif;
+  --font-body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1214;
+    --panel: #161c1f;
+    --fg: #e7eef0;
+    --muted: #8f9ca2;
+    --line: #283237;
+    --ink: #e7eef0;
+    --on-ink: #0e1214;
+    --ok: #3ccf8a;
+    --ok-soft: rgba(60, 207, 138, 0.17);
+    --warn: #f2a43a;
+    --idle: #5f6b71;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1214;
+  --panel: #161c1f;
+  --fg: #e7eef0;
+  --muted: #8f9ca2;
+  --line: #283237;
+  --ink: #e7eef0;
+  --on-ink: #0e1214;
+  --ok: #3ccf8a;
+  --ok-soft: rgba(60, 207, 138, 0.17);
+  --warn: #f2a43a;
+  --idle: #5f6b71;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  padding-block: 24px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+
+header { display: flex; flex-direction: column; gap: 4px; }
+h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 40px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1;
+  text-wrap: balance;
+}
+header p { margin: 0; color: var(--muted); max-width: 60ch; }
+
+.tuner {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+.badge {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.gauge { width: 100%; max-width: 520px; margin: 0 auto; display: block; height: auto; }
+.gauge .arc { fill: none; stroke: var(--line); stroke-width: 2; }
+.gauge .zone { fill: none; stroke: var(--ok); stroke-width: 6; stroke-linecap: round; opacity: 0.85; }
+.gauge .tick { stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+.gauge .tick.major { stroke: var(--fg); stroke-width: 2; }
+.gauge text { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+.gauge text.side { letter-spacing: 0.14em; font-size: 10px; }
+.needle { stroke: var(--fg); stroke-width: 3; stroke-linecap: round; }
+.hub { fill: var(--fg); }
+.tuner[data-state="ok"] .needle { stroke: var(--ok); }
+.tuner[data-state="ok"] .hub { fill: var(--ok); }
+.tuner[data-state="idle"] .needle { stroke: var(--idle); }
+.tuner[data-state="idle"] .hub { fill: var(--idle); }
+
+.readout {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 12px;
+  text-align: center;
+}
+.readout .col { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cap { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.val { font-family: var(--font-mono); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.note {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(76px, 20vw, 120px);
+  line-height: 0.9;
+  color: var(--idle);
+  min-width: 2.2ch;
+}
+.note small { font-size: 0.34em; font-weight: 700; margin-left: 2px; }
+.tuner[data-state="ok"] .note { color: var(--ok); }
+.tuner[data-state="flat"] .note, .tuner[data-state="sharp"] .note { color: var(--warn); }
+.tuner[data-state="flat"] #cents, .tuner[data-state="sharp"] #cents { color: var(--warn); }
+.tuner[data-state="ok"] #cents { color: var(--ok); }
+
+.status { margin: 0; text-align: center; min-height: 1.5em; font-weight: 500; }
+
+.strings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 640px) { .strings { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.str {
+  appearance: none;
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 6px 8px;
+  min-height: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.str:hover { border-color: var(--muted); }
+.str .num { font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 0.08em; }
+.str .nm { font-family: var(--font-display); font-weight: 800; font-size: 34px; line-height: 1.05; }
+.str .nm small { font-size: 0.5em; margin-left: 1px; }
+.str .hz { font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.str.active { border-color: var(--fg); }
+.str.active.ok { border-color: var(--ok); background: var(--ok-soft); }
+.str[aria-pressed="true"] .num::after { content: " \00b7 locked"; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+select, input[type="number"] {
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  max-width: 100%;
+}
+input[type="number"] { width: 96px; font-family: var(--font-mono); }
+.btn {
+  appearance: none;
+  font: inherit;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.btn.primary { background: var(--ink); color: var(--on-ink); }
+.btn[aria-pressed="true"]:not(.primary) { background: var(--ink); color: var(--on-ink); }
+.btn.primary.live { background: var(--ok); border-color: var(--ok); color: var(--on-ink); }
+.grow { flex: 1 1 160px; }
+:focus-visible { outline: 3px solid var(--ok); outline-offset: 2px; }
+
+.notes-line { font-family: var(--font-mono); font-size: 13px; color: var(--muted); margin: 0; }
+.msg {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  color: var(--fg);
+  font-size: 14px;
+}
+.foot { margin: 0; color: var(--muted); font-size: 13px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .str { transition: none; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Tuneline</h1>
+    <p>Chromatic guitar tuner. Choose a tuning, start the microphone, then pluck one string at a time.</p>
+  </header>
+
+  <section class="tuner" id="tuner" data-state="idle" aria-label="Tuner">
+    <span class="badge" id="badge">Demo</span>
+    <svg class="gauge" id="gauge" viewBox="0 20 400 195" role="img" aria-label="Tuning gauge from 50 cents flat to 50 cents sharp"></svg>
+    <div class="readout">
+      <div class="col"><span class="cap">Offset</span><span class="val" id="cents">0</span></div>
+      <div class="note" id="note" aria-live="off">-</div>
+      <div class="col"><span class="cap">Frequency</span><span class="val" id="hz">-</span></div>
+    </div>
+    <p class="status" id="status" aria-live="polite"></p>
+  </section>
+
+  <section>
+    <div class="strings" id="strings" role="group" aria-label="Strings"></div>
+  </section>
+
+  <section class="controls">
+    <button class="btn primary" id="mic" type="button">Start microphone</button>
+    <button class="btn" id="auto" type="button" aria-pressed="true">Auto detect string</button>
+    <div class="field grow">
+      <label for="tuning">Tuning</label>
+      <select id="tuning"></select>
+    </div>
+    <div class="field">
+      <label for="a4">A4 (Hz)</label>
+      <input type="number" id="a4" value="440" min="415" max="466" step="1" inputmode="numeric">
+    </div>
+  </section>
+
+  <p class="notes-line" id="notesLine"></p>
+  <p class="msg" id="msg" hidden></p>
+  <p class="foot">Tap a string to hear its reference tone and lock the tuner to it. Pitch detection runs in your browser and no audio is uploaded.</p>
+</div>
+
+<script>
+(function () {
+  var NOTE = { C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5, 'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11 };
+  // Notes listed from the 6th (lowest) string to the 1st (highest).
+  var TUNINGS = {
+    'Standard': ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
+    'Half step down': ['Eb2', 'Ab2', 'Db3', 'Gb3', 'Bb3', 'Eb4'],
+    'Full step down': ['D2', 'G2', 'C3', 'F3', 'A3', 'D4'],
+    'Drop D': ['D2', 'A2', 'D3', 'G3', 'B3', 'E4'],
+    'Double drop D': ['D2', 'A2', 'D3', 'G3', 'B3', 'D4'],
+    'DADGAD': ['D2', 'A2', 'D3', 'G3', 'A3', 'D4'],
+    'Open G': ['D2', 'G2', 'D3', 'G3', 'B3', 'D4'],
+    'Open D': ['D2', 'A2', 'D3', 'F#3', 'A3', 'D4'],
+    'Open C': ['C2', 'G2', 'C3', 'G3', 'C4', 'E4']
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function parse(n) {
+    var m = n.match(/^([A-G][#b]?)(\d)$/);
+    return { name: m[1], oct: +m[2], midi: NOTE[m[1]] + 12 * (+m[2] + 1) };
+  }
+  function setText(el, v) { if (el._v !== v) { el.textContent = v; el._v = v; } }
+
+  var tuningName = 'Standard', a4 = 440, strings = [], locked = null;
+  var demo = true, micOn = false, ctx = null, stream = null, analyser = null, buf = null, timer = null;
+  var hist = [], liveF = 0, lastHit = 0, shown = 0, activeKey = '';
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- gauge ---------- */
+  var CX = 200, CY = 200, R = 160;
+  function P(a, r) { var t = a * Math.PI / 180; return [CX + r * Math.sin(t), CY - r * Math.cos(t)]; }
+  function ang(c) { return c / 50 * 60; }
+  (function buildGauge() {
+    var s = '';
+    var r2 = R + 10, p0 = P(-60, r2), p1 = P(60, r2);
+    s += '<path class="arc" d="M' + p0[0] + ' ' + p0[1] + ' A' + r2 + ' ' + r2 + ' 0 0 1 ' + p1[0] + ' ' + p1[1] + '"/>';
+    var z0 = P(ang(-5), r2), z1 = P(ang(5), r2);
+    s += '<path class="zone" d="M' + z0[0] + ' ' + z0[1] + ' A' + r2 + ' ' + r2 + ' 0 0 1 ' + z1[0] + ' ' + z1[1] + '"/>';
+    for (var c = -50; c <= 50; c += 5) {
+      var len = c === 0 ? 24 : (c % 10 === 0 ? 15 : 8);
+      var a = ang(c), o = P(a, R), i = P(a, R - len);
+      s += '<line class="tick' + (c % 10 === 0 ? ' major' : '') + '" x1="' + o[0].toFixed(1) + '" y1="' + o[1].toFixed(1) + '" x2="' + i[0].toFixed(1) + '" y2="' + i[1].toFixed(1) + '"/>';
+    }
+    [[-50, '-50'], [-25, '-25'], [0, '0'], [25, '+25'], [50, '+50']].forEach(function (l) {
+      var q = P(ang(l[0]), R - 40);
+      s += '<text x="' + q[0].toFixed(1) + '" y="' + q[1].toFixed(1) + '">' + l[1] + '</text>';
+    });
+    s += '<text class="side" x="64" y="152">FLAT</text><text class="side" x="336" y="152">SHARP</text>';
+    s += '<g id="needle"><line class="needle" x1="200" y1="200" x2="200" y2="56"/><circle class="hub" cx="200" cy="200" r="10"/></g>';
+    $('gauge').innerHTML = s;
+  })();
+  var needleEl = $('needle');
+
+  /* ---------- tuning data ---------- */
+  function rebuild() {
+    strings = TUNINGS[tuningName].map(function (n) {
+      var p = parse(n);
+      return { name: p.name, oct: p.oct, midi: p.midi, f: a4 * Math.pow(2, (p.midi - 69) / 12) };
+    });
+    var html = '';
+    for (var i = 0; i < strings.length; i++) {
+      var st = strings[i];
+      html += '<button type="button" class="str" data-i="' + i + '" aria-pressed="' + (locked === i) + '">' +
+        '<span class="num">STRING ' + (6 - i) + '</span>' +
+        '<span class="nm">' + st.name + '<small>' + st.oct + '</small></span>' +
+        '<span class="hz">' + st.f.toFixed(1) + ' Hz</span></button>';
+    }
+    $('strings').innerHTML = html;
+    $('notesLine').textContent = tuningName + ': ' + strings.map(function (s) { return s.name; }).join('  ') + '  (low to high)';
+    activeKey = '';
+  }
+
+  /* ---------- pitch detection (YIN) ---------- */
+  var W = 2048, dArr = new Float32Array(2048), cArr = new Float32Array(2048);
+  function yin(x, sr) {
+    var minT = Math.floor(sr / 500);
+    var maxT = Math.min(Math.floor(sr / 60), x.length - W - 1, dArr.length - 1);
+    var e = 0, j, t;
+    for (j = 0; j < W; j++) e += x[j] * x[j];
+    if (Math.sqrt(e / W) < 0.008) return -1;
+    for (t = 1; t <= maxT; t++) {
+      var s = 0;
+      for (j = 0; j < W; j++) { var v = x[j] - x[j + t]; s += v * v; }
+      dArr[t] = s;
+    }
+    var run = 0; cArr[0] = 1;
+    for (t = 1; t <= maxT; t++) { run += dArr[t]; cArr[t] = run > 0 ? dArr[t] * t / run : 1; }
+    var tau = -1;
+    for (t = minT; t < maxT; t++) {
+      if (cArr[t] < 0.12) {
+        while (t + 1 < maxT && cArr[t + 1] < cArr[t]) t++;
+        tau = t; break;
+      }
+    }
+    if (tau < 1) return -1;
+    var a = cArr[tau - 1], b = cArr[tau], g = cArr[tau + 1];
+    var den = a - 2 * b + g;
+    var shift = den ? 0.5 * (a - g) / den : 0;
+    return sr / (tau + shift);
+  }
+  function detectTick() {
+    if (!analyser) return;
+    analyser.getFloatTimeDomainData(buf);
+    var f = yin(buf, ctx.sampleRate), now = performance.now();
+    if (f > 0 && f < 1000) {
+      hist.push(f); if (hist.length > 5) hist.shift();
+      var sorted = hist.slice().sort(function (p, q) { return p - q; });
+      liveF = sorted[Math.floor(sorted.length / 2)];
+      lastHit = now;
+    } else if (now - lastHit > 300) {
+      hist = [];
+    }
+  }
+
+  /* ---------- audio ---------- */
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  function playTone(f) {
+    try {
+      var c = getCtx(), t = c.currentTime;
+      var g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.28, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+      var o1 = c.createOscillator(); o1.type = 'triangle'; o1.frequency.value = f;
+      var o2 = c.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 2;
+      var g2 = c.createGain(); g2.gain.value = 0.25;
+      o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(c.destination);
+      o1.start(t); o2.start(t); o1.stop(t + 2.5); o2.stop(t + 2.5);
+    } catch (e) { /* audio output unavailable */ }
+  }
+
+  function showMsg(text) { var m = $('msg'); m.textContent = text; m.hidden = !text; }
+
+  function startMic() {
+    var md = navigator.mediaDevices;
+    if (!md || !md.getUserMedia) { micFail(); return; }
+    md.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }).then(function (s) {
+      stream = s;
+      var c = getCtx();
+      var src = c.createMediaStreamSource(s);
+      analyser = c.createAnalyser();
+      analyser.fftSize = 4096;
+      src.connect(analyser);
+      buf = new Float32Array(analyser.fftSize);
+      micOn = true; demo = false; hist = []; liveF = 0; lastHit = 0;
+      timer = setInterval(detectTick, 50);
+      showMsg('');
+      syncUI();
+    }).catch(micFail);
+  }
+  function micFail() {
+    showMsg('The microphone is not available here. If this page is open in a preview, save tuner.html and open it in Chrome, Edge, Safari or Firefox, then allow microphone access. Reference tones still work, so you can tune by ear.');
+  }
+  function stopMic() {
+    if (timer) clearInterval(timer);
+    timer = null;
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null; analyser = null; micOn = false; demo = true; liveF = 0;
+    syncUI();
+  }
+  function syncUI() {
+    var b = $('mic');
+    b.textContent = micOn ? 'Stop microphone' : 'Start microphone';
+    b.classList.toggle('live', micOn);
+    $('auto').setAttribute('aria-pressed', String(locked === null));
+    var btns = $('strings').children;
+    for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(locked === i));
+    $('badge').hidden = !demo;
+  }
+
+  /* ---------- render loop ---------- */
+  var statusKey = '';
+  function frame(now) {
+    var idx = locked, cents = 0, f = 0, has = false;
+    if (demo) {
+      idx = locked !== null ? locked : 1;
+      var t = (now / 1000) % 11;
+      cents = 46 * Math.exp(-t / 3) * Math.cos(t * 2.3);
+      f = strings[idx].f * Math.pow(2, cents / 1200);
+      has = true;
+    } else if (micOn && liveF && now - lastHit < 700) {
+      f = liveF;
+      if (idx === null) {
+        var best = Infinity;
+        for (var i = 0; i < strings.length; i++) {
+          var d = Math.abs(1200 * Math.log2(f / strings[i].f));
+          if (d < best) { best = d; idx = i; }
+        }
+      }
+      cents = 1200 * Math.log2(f / strings[idx].f);
+      has = true;
+    }
+
+    var target = has ? Math.max(-50, Math.min(50, cents)) : 0;
+    shown += (target - shown) * (reduce ? 0.5 : 0.14);
+    needleEl.setAttribute('transform', 'rotate(' + (ang(shown)).toFixed(2) + ' 200 200)');
+
+    var state = !has ? 'idle' : (Math.abs(cents) <= 5 ? 'ok' : (cents < 0 ? 'flat' : 'sharp'));
+    var tuner = $('tuner');
+    if (tuner.dataset.state !== state) tuner.dataset.state = state;
+
+    var shownIdx = idx;
+    var noteEl = $('note');
+    if (shownIdx !== null) {
+      var s = strings[shownIdx];
+      var h = s.name + '<small>' + s.oct + '</small>';
+      if (noteEl._v !== h) { noteEl.innerHTML = h; noteEl._v = h; }
+    } else {
+      setText(noteEl, '-');
+    }
+    setText($('cents'), has ? (cents > 0.5 ? '+' : '') + Math.round(cents) + ' cents' : '0 cents');
+    setText($('hz'), has ? f.toFixed(1) + ' Hz' : (shownIdx !== null ? strings[shownIdx].f.toFixed(1) + ' Hz' : '-'));
+
+    var key = state + '|' + shownIdx + '|' + demo + '|' + micOn;
+    if (key !== statusKey) {
+      statusKey = key;
+      var msg;
+      if (demo) msg = 'Demo sweep. Start the microphone to tune your guitar.';
+      else if (state === 'idle') msg = shownIdx !== null ? 'Listening for ' + strings[shownIdx].name + strings[shownIdx].oct + '. Pluck the string.' : 'Listening. Pluck a string.';
+      else if (state === 'ok') msg = 'In tune';
+      else if (state === 'flat') msg = 'Too low. Tighten the string.';
+      else msg = 'Too high. Loosen the string.';
+      $('status').textContent = msg;
+    }
+
+    var ak = shownIdx + '|' + (state === 'ok');
+    if (ak !== activeKey) {
+      activeKey = ak;
+      var btns = $('strings').children;
+      for (var j = 0; j < btns.length; j++) {
+        btns[j].classList.toggle('active', j === shownIdx);
+        btns[j].classList.toggle('ok', j === shownIdx && state === 'ok');
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- wiring ---------- */
+  var sel = $('tuning');
+  Object.keys(TUNINGS).forEach(function (n) {
+    var o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
+  });
+  sel.addEventListener('change', function () { tuningName = sel.value; rebuild(); syncUI(); });
+  $('a4').addEventListener('change', function (e) {
+    var v = parseFloat(e.target.value);
+    if (!(v >= 415 && v <= 466)) v = 440;
+    a4 = v; e.target.value = v; rebuild(); syncUI();
+  });
+  $('strings').addEventListener('click', function (e) {
+    var b = e.target.closest('.str'); if (!b) return;
+    locked = +b.dataset.i;
+    playTone(strings[locked].f);
+    activeKey = ''; syncUI();
+  });
+  $('auto').addEventListener('click', function () { locked = null; activeKey = ''; syncUI(); });
+  $('mic').addEventListener('click', function () { micOn ? stopMic() : startMic(); });
+
+  rebuild(); syncUI();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
